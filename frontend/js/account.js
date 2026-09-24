@@ -1,4 +1,4 @@
-const ACCOUNT_API = "https://azma-backend-production.up.railway.app/api";
+const ACCOUNT_API = "https://fmk-backend-production.up.railway.app/api";
 
 function accountToken(){
   return localStorage.getItem("token");
@@ -36,9 +36,9 @@ function accountLogout(){
 
 function nav(){
   return `<div class="nav">
-    <a href="home.html">Home</a>
-    <a href="vendor.html">Vendor</a>
-    <a href="profile.html">Profile</a>
+    <a href="../html/home.html">Home</a>
+    <a href="../html/vendor.html">Vendor</a>
+    <a href="../html/profile.html">Profile</a>
   </div>`;
 }
 
@@ -163,7 +163,7 @@ async function loadOrders(){
               deliveryStatus === "shipped"
                 ? `
                   <p>
-                    Your product has been shipped.
+                    Your clothes has been shipped.
                     Please confirm receipt after delivery.
                   </p>
                 `
