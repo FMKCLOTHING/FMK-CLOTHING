@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>My Orders | Fmk Clothing</title>
+
+<link rel="stylesheet" href="../css/account.css">
+
+<style>
+  .order-card {
+    margin-bottom: 18px;
+  }
+
+  .order-status {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 10px;
+    background: #f5f5f5;
+  }
+
+  .confirm-box {
+    margin-top: 18px;
+    padding: 16px;
+    border-radius: 12px;
+    background: #eef8f1;
+    border: 1px solid #c9e8d2;
+  }
+
+  .confirm-box h4 {
+    margin: 0 0 8px;
+  }
+
+  .confirm-box p {
+    margin: 6px 0 14px;
+  }
+
+  .confirm-button {
+    width: 100%;
+    padding: 13px 16px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 700;
+    background: #198754;
+    color: #fff;
+  }
+
+  .confirm-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .confirmed-box {
+    margin-top: 16px;
+    padding: 14px;
+    border-radius: 10px;
+    background: #f0f7ff;
+    border: 1px solid #c9def5;
+  }
+
+  .error-box {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 10px;
+    background: #fff1f1;
+    border: 1px solid #f0c4c4;
+    color: #9b1c1c;
+  }
+</style>
+</head>
+
+<body>
+
+<main class="page">
+
+  <h1>My Orders</h1>
+
+  <div
+    id="orderMessage"
+    class="card"
+    style="display:none;"
+  ></div>
+
+  <div id="ordersContent">
+    <div class="card">Loading orders...</div>
+  </div>
+
+  <div class="card">
+    <a
+      class="action"
+      href="../html/support.html"
+      style="display:block;text-align:center;"
+    >
+      💬 Contact Admin Support
+    </a>
+  </div>
+
+  <div class="card">
+    <button onclick="logoutBuyer()">Logout</button>
+  </div>
+
+</main>
+
+<script>
+/* =========================================================
+   FMK CLOTHING
+   BUYER ORDERS
+
+   IMPORTANT:
+   - Uses the existing FMK backend.
+   - Does NOT change Pi payment logic.
+   - Does NOT change A2U payout logic.
+   - Adds the missing buyer "Confirm Product Received" UI.
+========================================================= */
+
+const API =
+  "https://fmk-backend-production.up.railway.app/api";
+
+const token =
+  localStorage.getItem("token");
+
+
+/* =========================================================
+   AUTH CHECK
+========================================================= */
+
+if (!token) {
+
+  window.location.href =
+    "../html/profile.html";
+
+}
+
+
+/* =========================================================
+   REQUEST HEADERS
+========================================================= */
+
+function headers() {
+
+  return {
+    Authorization:
+      "Bearer " + token
+  };
+
+}
+
+
+/* =========================================================
+   HTML ESCAPE
+========================================================= */
+
+function escapeHTML(value) {
+
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+
+}
+
+
+/* =========================================================
+   SHOW MESSAGE
+========================================================= */
+
+function showMessage(message) {
+
+  const box =
+    document.getElementById(
+      "orderMessage"
+    );
+
+  box.textContent =
+    message;
+
+  box.style.display =
+    "block";
+
+}
+
+
+/* =========================================================
+   LOAD BUYER ORDERS
+========================================================= */
+
+async function loadOrders() {
+
+  const container =
+    document.getElementById(
+      "ordersContent"
+    );
+
+
+  try {
+
+    const response =
+      await fetch(
+        API + "/orders/my",
+        {
+          method: "GET",
+          headers: headers()
+        }
+      );
+
+
+    const data =
+      await response.json()
+        .catch(() => []);
+
+
+    /* =====================================================
+       SESSION EXPIRED
+    ===================================================== */
+
+    if (
+      response.status === 401 ||
+      response.status === 403
+    ) {
+
+      logoutBuyer();
+      return;
+
+    }
+
+
+    /* =====================================================
+       SERVER ERROR
+    ===================================================== */
+
+    if (!response.ok) {
+
+      throw new Error(
+        data.message ||
+        "Failed to load orders"
+      );
+
+    }
+
+
+    /* =====================================================
+       NO ORDERS
+    ===================================================== */
+
+    if (
+      !Array.isArray(data) ||
+      !data.length
+    ) {
+
+      container.innerHTML =
+        '<div class="card">You have no orders yet.</div>';
+
+      return;
+
+    }
+
+
+    /* =====================================================
+       GROUP ITEMS BY PARENT ORDER
+       
+       /api/orders/my returns one row per
+       order item.
+    ===================================================== */
+
+    const grouped = {};
+
+
+    data.forEach(item => {
+
+      const id =
+        Number(item.id);
+
+
+      if (!grouped[id]) {
+
+        grouped[id] = {
+          ...item,
+          items: []
+        };
+
+      }
+
+
+      grouped[id].items.push(item);
+
+    });
+
+
+    /* =====================================================
+       RENDER ORDERS
+    ===================================================== */
+
+    container.innerHTML =
+      Object.values(grouped)
+        .map(order => {
+
+
+          const orderStatus =
+            String(
+              order.status || ""
+            ).toLowerCase();
+
+
+          const deliveryStatus =
+            String(
+              order.delivery_status || ""
+            ).toLowerCase();
+
+
+          const refundStatus =
+            String(
+              order.refund_status ||
+              "none"
+            ).toLowerCase();
+
+
+          const hasConfirmed =
+            Boolean(
+              order.buyer_confirmed_at
+            );
+
+
+          /* =================================================
+             CAN BUYER CONFIRM RECEIPT?
+
+             The backend requires:
+
+             payment_status = paid
+
+             AND
+
+             delivery_status = delivered
+
+             OR status = completed
+
+             We mirror that condition here so the button
+             appears only when the order is eligible.
+          ================================================= */
+
+          const paymentStatus =
+            String(
+              order.payment_status || ""
+            ).toLowerCase();
+
+
+          const canConfirmReceipt =
+            paymentStatus === "paid" &&
+            (
+              deliveryStatus === "delivered" ||
+              orderStatus === "completed"
+            ) &&
+            !hasConfirmed &&
+            refundStatus !== "completed";
+
+
+          /* =================================================
+             REFUND BUTTON
+          ================================================= */
+
+          const canRequestRefund =
+            [
+              "paid",
+              "processing",
+              "shipped"
+            ].includes(
+              orderStatus
+            ) &&
+            !hasConfirmed &&
+            [
+              "none",
+              "cancelled",
+              "failed"
+            ].includes(
+              refundStatus
+            );
+
+
+          /* =================================================
+             REFUND PENDING
+          ================================================= */
+
+          const waitingVendor =
+            refundStatus ===
+            "pending";
+
+
+          return `
+
+            <div
+              class="card order-card"
+            >
+
+              <h3>
+                Order #${escapeHTML(order.id)}
+              </h3>
+
+
+              <p>
+                <strong>Total:</strong>
+                ${Number(
+                  order.total_pi || 0
+                ).toFixed(8)}
+                Pi
+              </p>
+
+
+              <div class="order-status">
+
+                <p>
+                  <strong>Order:</strong>
+                  ${escapeHTML(
+                    order.status || ""
+                  )}
+                </p>
+
+                <p>
+                  <strong>Payment:</strong>
+                  ${escapeHTML(
+                    order.payment_status || ""
+                  )}
+                </p>
+
+                <p>
+                  <strong>Delivery:</strong>
+                  ${escapeHTML(
+                    order.delivery_status || ""
+                  )}
+                </p>
+
+                <p>
+                  <strong>Refund:</strong>
+                  ${escapeHTML(
+                    order.refund_status ||
+                    "none"
+                  )}
+                </p>
+
+              </div>
+
+
+              <p>
+                <strong>Products:</strong>
+
+                ${
+                  order.items
+                    .map(
+                      item =>
+                        `${escapeHTML(
+                          item.product_name ||
+                          "Product"
+                        )} × ${Number(
+                          item.quantity || 0
+                        )}`
+                    )
+                    .join(", ")
+                }
+
+              </p>
+
+
+              <!-- =========================================
+                   BUYER CONFIRM RECEIPT
+              ========================================== -->
+
+              ${
+                canConfirmReceipt
+                  ? `
+
+                    <div class="confirm-box">
+
+                      <h4>
+                        📦 Your order has been delivered
+                      </h4>
+
+                      <p>
+                        Please confirm that you have
+                        received your product.
+                      </p>
+
+                      <button
+                        type="button"
+                        class="confirm-button"
+                        id="confirm-btn-${order.id}"
+                        onclick="confirmProductReceived(${order.id})"
+                      >
+                        ✅ Confirm Product Received
+                      </button>
+
+                    </div>
+
+                  `
+                  : ""
+              }
+
+
+              <!-- =========================================
+                   ALREADY CONFIRMED
+              ========================================== -->
+
+              ${
+                hasConfirmed
+                  ? `
+
+                    <div class="confirmed-box">
+
+                      <strong>
+                        ✅ Receipt Confirmed
+                      </strong>
+
+                      <p>
+                        You have confirmed receipt
+                        of this order.
+                      </p>
+
+                      <p>
+                        Your confirmation has been
+                        recorded and the vendor's
+                        eligible earnings can now
+                        proceed to the admin payout
+                        process.
+                      </p>
+
+                    </div>
+
+                  `
+                  : ""
+              }
+
+
+              <!-- =========================================
+                   REFUND REQUEST
+              ========================================== -->
+
+              ${
+                canRequestRefund
+                  ? `
+
+                    <button
+                      type="button"
+                      onclick="requestRefund(${order.id})"
+                      style="
+                        background:#dc3545;
+                        color:#fff;
+                        margin-top:12px;
+                      "
+                    >
+                      💸 Request Refund
+                    </button>
+
+                  `
+                  : ""
+              }
+
+
+              <!-- =========================================
+                   REFUND WAITING
+              ========================================== -->
+
+              ${
+                waitingVendor
+                  ? `
+
+                    <p
+                      style="
+                        margin-top:12px;
+                      "
+                    >
+                      ⏳ Refund request sent.
+                      Waiting for the vendor to
+                      cancel the order.
+                    </p>
+
+                  `
+                  : ""
+              }
+
+
+              <!-- =========================================
+                   VENDOR CANCELLED
+              ========================================== -->
+
+              ${
+                orderStatus === "cancelled" &&
+                refundStatus === "pending"
+                  ? `
+
+                    <p
+                      style="
+                        margin-top:12px;
+                      "
+                    >
+                      ⏳ Vendor cancelled the order.
+                      Waiting for Admin to release
+                      your refund.
+                    </p>
+
+                  `
+                  : ""
+              }
+
+
+              <!-- =========================================
+                   REFUND COMPLETED
+              ========================================== -->
+
+              ${
+                refundStatus === "completed"
+                  ? `
+
+                    <p
+                      style="
+                        margin-top:12px;
+                      "
+                    >
+                      ✅ Refund completed.
+
+                      ${
+                        order.refund_txid
+                          ? `
+                            Transaction:
+                            ${escapeHTML(
+                              order.refund_txid
+                            )}
+                          `
+                          : ""
+                      }
+
+                    </p>
+
+                  `
+                  : ""
+              }
+
+
+              <!-- =========================================
+                   REFUND FAILED
+              ========================================== -->
+
+              ${
+                refundStatus === "failed"
+                  ? `
+
+                    <p
+                      style="
+                        margin-top:12px;
+                      "
+                    >
+                      ⚠️ Refund processing failed.
+                      Please contact Admin Support.
+                    </p>
+
+                  `
+                  : ""
+              }
+
+            </div>
+
+          `;
+
+        })
+        .join("");
+
+
+  } catch (error) {
+
+    console.error(
+      "Buyer orders error:",
+      error
+    );
+
+
+    container.innerHTML =
+      `<div class="card">
+        Unable to load orders:
+        ${escapeHTML(
+          error.message ||
+          "Server error"
+        )}
+      </div>`;
+
+  }
+
+}
+
+
+/* =========================================================
+   CONFIRM PRODUCT RECEIVED
+
+   Existing backend endpoint:
+
+   POST /api/orders/:id/confirm-received
+
+   Backend then:
+      buyer_confirmed_at
+            ↓
+      vendor earnings
+            ↓
+      earnings.status = pending
+            ↓
+      admin payout process
+========================================================= */
+
+async function confirmProductReceived(orderId) {
+
+  const confirmed =
+    confirm(
+      "Have you received this product successfully?\n\n" +
+      "By confirming, you are confirming that the order " +
+      "has been received."
+    );
+
+
+  if (!confirmed) {
+
+    return;
+
+  }
+
+
+  const button =
+    document.getElementById(
+      "confirm-btn-" + orderId
+    );
+
+
+  if (button) {
+
+    button.disabled =
+      true;
+
+    button.textContent =
+      "Confirming...";
+
+  }
+
+
+  try {
+
+    const response =
+      await fetch(
+        API +
+        "/orders/" +
+        encodeURIComponent(
+          orderId
+        ) +
+        "/confirm-received",
+        {
+          method: "POST",
+
+          headers: {
+            ...headers(),
+            "Content-Type":
+              "application/json"
+          }
+        }
+      );
+
+
+    const data =
+      await response.json()
+        .catch(() => ({}));
+
+
+    /* =====================================================
+       AUTH FAILURE
+    ===================================================== */
+
+    if (
+      response.status === 401 ||
+      response.status === 403
+    ) {
+
+      logoutBuyer();
+      return;
+
+    }
+
+
+    /* =====================================================
+       BACKEND ERROR
+    ===================================================== */
+
+    if (!response.ok) {
+
+      throw new Error(
+        data.message ||
+        "Unable to confirm product receipt"
+      );
+
+    }
+
+
+    /* =====================================================
+       SUCCESS
+    ===================================================== */
+
+    showMessage(
+      data.message ||
+      "Product receipt confirmed successfully."
+    );
+
+
+    /*
+     * Reload the order list.
+     *
+     * This removes the confirmation button and
+     * displays the confirmed state.
+     */
+
+    await loadOrders();
+
+
+  } catch (error) {
+
+    console.error(
+      "Confirm receipt error:",
+      error
+    );
+
+
+    showMessage(
+      error.message ||
+      "Unable to confirm product receipt."
+    );
+
+
+    if (button) {
+
+      button.disabled =
+        false;
+
+      button.textContent =
+        "✅ Confirm Product Received";
+
+    }
+
+  }
+
+}
+
+
+/* =========================================================
+   REQUEST REFUND
+========================================================= */
+
+async function requestRefund(orderId) {
+
+  const reason =
+    prompt(
+      "Why are you requesting a refund?",
+      "I did not receive the product."
+    );
+
+
+  if (reason === null) {
+
+    return;
+
+  }
+
+
+  try {
+
+    const response =
+      await fetch(
+        API + "/refunds/request",
+        {
+          method: "POST",
+
+          headers: {
+            ...headers(),
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+              order_id:
+                orderId,
+
+              reason:
+                reason
+            })
+          }
+        );
+
+
+    const data =
+      await response.json()
+        .catch(() => ({}));
+
+
+    if (
+      response.status === 401 ||
+      response.status === 403
+    ) {
+
+      logoutBuyer();
+      return;
+
+    }
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        data.message ||
+        "Refund request failed"
+      );
+
+    }
+
+
+    showMessage(
+      data.message ||
+      "Refund request submitted."
+    );
+
+
+    await loadOrders();
+
+
+  } catch (error) {
+
+    console.error(
+      "Refund request error:",
+      error
+    );
+
+
+    showMessage(
+      error.message ||
+      "Unable to request refund."
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   LOGOUT
+========================================================= */
+
+function logoutBuyer() {
+
+  localStorage.removeItem(
+    "token"
+  );
+
+  localStorage.removeItem(
+    "user"
+  );
+
+
+  window.location.href =
+    "../html/profile.html";
+
+}
+
+
+/* =========================================================
+   INITIAL LOAD
+========================================================= */
+
+document.addEventListener(
+  "DOMContentLoaded",
+  loadOrders
+);
+
+</script>
+
+</body>
+</html>
